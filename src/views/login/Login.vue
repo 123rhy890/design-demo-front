@@ -2,7 +2,7 @@
   <div style="width:100%;height:100vh;background:#f5f7fa;display:flex;justify-content:center;align-items:center;">
     <el-card class="login-card" style="width:400px;">
       <template #header>
-        <div style="text-align:center;font-size:20px;font-weight:bold;color:#165DFF;">儿童托管班管理系统1111</div>
+        <div style="text-align:center;font-size:20px;font-weight:bold;color:#165DFF;">儿童托管班管理系统</div>
       </template>
       <el-form :model="loginForm" ref="loginRef" :rules="loginRules" label-width="80px">
         <el-form-item label="账号" prop="username">
