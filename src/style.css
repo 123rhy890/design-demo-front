@@ -1,0 +1,63 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Microsoft YaHei", sans-serif;
+  background-color: #f5f7fa;
+}
+
+ul,
+li {
+  list-style: none;
+}
+
+a {
+  text-decoration: none;
+  color: #333;
+}
+
+/* 清除element默认间距 */
+.el-card {
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.06);
+  margin-bottom: 20px;
+  border-radius: 8px;
+}
+
+/* 主内容区域样式 */
+.main-container {
+  padding: 20px;
+  min-height: calc(100vh - 100px);
+  width: 100%;
+  overflow: auto;
+}
+
+/* 通用间距样式 */
+.mt-10 {
+  margin-top: 10px;
+}
+
+.mt-20 {
+  margin-top: 20px;
+}
+
+.mb-20 {
+  margin-bottom: 20px;
+}
+
+.pd-10 {
+  padding: 10px;
+}
+
+/* 按钮统一样式 */
+.el-button {
+  margin-right: 8px;
+}
+
+/* 表格统一样式 */
+.el-table {
+  --el-table-header-text-color: #333;
+  --el-table-row-hover-bg-color: #fafafa;
+}
