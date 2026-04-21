@@ -32,6 +32,7 @@ export const asyncRoutes = [
   {
     path: '/admin',
     name: 'Admin',
+    redirect: '/admin/userAudit',
     meta: { title: '系统管理', icon: 'Setting', roles: ['admin'] },
     component: () => import('../layout/Layout.vue'),
     children: [
@@ -45,13 +46,15 @@ export const asyncRoutes = [
   {
     path: '/teacher',
     name: 'Teacher',
+    redirect: '/teacher/checkIn',
     meta: { title: '教学管理', icon: 'UserFilled', roles: ['teacher'] },
     component: () => import('../layout/Layout.vue'),
     children: [
-      { path: 'childList', name: 'ChildList', component: () => import('../views/teacher/ChildList.vue'), meta: { title: '儿童管理', roles: ['teacher'] } },
+      { path: 'childList', name: 'ChildList', component: () => import('../views/teacher/ChildManage.vue'), meta: { title: '儿童管理', roles: ['teacher'] } },
       { path: 'checkIn', name: 'CheckIn', component: () => import('../views/teacher/CheckIn.vue'), meta: { title: '接送签到', roles: ['teacher'] } },
       { path: 'dailyRecord', name: 'DailyRecord', component: () => import('../views/teacher/DailyRecord.vue'), meta: { title: '日常记录', roles: ['teacher'] } },
       { path: 'classManage', name: 'ClassManage', component: () => import('../views/teacher/ClassManage.vue'), meta: { title: '班级管理', roles: ['teacher'] } },
+      { path: 'exceptionReport', name: 'ExceptionReport', component: () => import('../views/teacher/ExceptionReport.vue'), meta: { title: '异常汇报', roles: ['teacher'] } },
       { path: 'msgChat', name: 'MsgChat', component: () => import('../views/teacher/MsgChat.vue'), meta: { title: '家校沟通', roles: ['teacher'] } }
     ]
   },
@@ -59,6 +62,7 @@ export const asyncRoutes = [
   {
     path: '/parent',
     name: 'Parent',
+    redirect: '/parent/childBind',
     meta: { title: '家长中心', icon: 'User', roles: ['parent'] },
     component: () => import('../layout/Layout.vue'),
     children: [
@@ -80,29 +84,39 @@ export const asyncRoutes = [
   { path: '/:pathMatch(.*)*', redirect: '/dashboard', meta: { hidden: true } }
 ]
 
-// ✅ 核心修复点1：合并【静态路由+动态路由】，所有页面路由全部注册
+// 合并静态路由和动态路由
 const router = createRouter({
   history: createWebHistory(),
   routes: staticRoutes.concat(asyncRoutes)
 })
 
-// ✅ 核心修复点2：完整版 方案二专用路由守卫 (你要的这段完整代码在这里)
+// 路由守卫 - 权限控制
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
   // 设置页面标题
   document.title = to.meta.title || '儿童托管班管理系统'
+  
   // 访问登录页：直接放行
   if (to.path === '/login') {
     next()
     return
   }
-  // 方案二专属：只保留角色权限判断，删除未登录跳转逻辑，不会拦截
+  
+  // 未登录：跳转到登录页
+  if (!userStore.isLogin) {
+    ElMessage.warning('请先登录！')
+    next('/login')
+    return
+  }
+  
+  // 已登录：检查角色权限
   const hasRole = to.meta.roles ? to.meta.roles.includes(userStore.userInfo.role) : true
+  
   if (hasRole) {
     next()
   } else {
-    ElMessage.error('暂无权限访问该页面！')
-    next(from.path)
+    ElMessage.error(`暂无权限访问该页面！当前角色：${userStore.userInfo.role}`)
+    next(from.path || '/dashboard')
   }
 })
 

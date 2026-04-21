@@ -46,6 +46,7 @@
             <el-menu-item index="/teacher/checkIn">接送签到</el-menu-item>
             <el-menu-item index="/teacher/dailyRecord">日常记录</el-menu-item>
             <el-menu-item index="/teacher/classManage">班级管理</el-menu-item>
+            <el-menu-item index="/teacher/exceptionReport">异常汇报</el-menu-item>
             <el-menu-item index="/teacher/msgChat">家校沟通</el-menu-item>
           </el-sub-menu>
           <!-- 家长菜单 -->

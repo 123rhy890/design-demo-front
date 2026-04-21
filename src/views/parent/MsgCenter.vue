@@ -4,7 +4,8 @@
 -->
 <template>
   <div class="parent-msg-center">
-    <h3>家校沟通消息中心</h3>
+    <h3>家校沟通消息中心 - 功能完善中</h3>
+    <p>包含：接收老师消息、班级公告、在线聊天、消息提醒等功能</p>
   </div>
 </template>
 
@@ -14,6 +15,7 @@
 
 <style scoped>
 .parent-msg-center {
+  padding: 20px;
   width: 100%;
   height: 100%;
 }

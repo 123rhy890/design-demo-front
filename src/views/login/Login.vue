@@ -1,5 +1,16 @@
 <template>
-  <div style="width:100%;height:100vh;background:#f5f7fa;display:flex;justify-content:center;align-items:center;">
+  <div 
+    class="login-page"
+    style="
+      width: 100%;
+      height: 100vh;
+      background: url('https://picsum.photos/1920/1080?random=1') no-repeat center center;
+      background-size: cover;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    "
+  >
     <el-card class="login-card" style="width:400px;">
       <template #header>
         <div style="text-align:center;font-size:20px;font-weight:bold;color:#165DFF;">儿童托管班管理系统</div>
@@ -20,6 +31,7 @@
         </el-form-item>
         <el-form-item style="text-align:center;">
           <el-button type="primary" @click="handleLogin" size="default">登录系统</el-button>
+          <el-button type="primary" @click="handleRegister" size="default">注册用户</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -73,4 +85,29 @@ const handleLogin = () => {
     }
   })
 }
+
+const handleRegister = () => {
+  console.log('注册测试')
+}
 </script>
+
+<style scoped>
+.login-page {
+  position: relative;
+}
+
+.login-card {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+}
+
+.login-form {
+  margin-top: 20px;
+}
+
+/* 移除 el-form-item__content 的 margin-left */
+:deep(.el-form-item__content) {
+  margin-left: 0 !important;
+  justify-content: center !important;
+}
+</style>

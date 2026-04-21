@@ -4,12 +4,7 @@ import Cookies from 'js-cookie'
 export const useUserStore = defineStore('user', {
   state: () => ({
     token: Cookies.get('token') || '',
-    userInfo: {
-      userId: '',
-      userName: '',
-      role: '', // 核心：区分角色 admin-管理员 teacher-老师 parent-家长
-      avatar: ''
-    },
+    userInfo: JSON.parse(Cookies.get('userInfo') || '{"userId":"","userName":"","role":"","avatar":""}'),
     sidebar: true // 侧边栏展开/收起
   }),
   actions: {
@@ -18,16 +13,19 @@ export const useUserStore = defineStore('user', {
       this.token = token
       this.userInfo = userInfo
       Cookies.set('token', token, { expires: 7 }) // token缓存7天
+      Cookies.set('userInfo', JSON.stringify(userInfo), { expires: 7 }) // 用户信息也缓存7天
     },
     // 退出登录-清空数据
     logout () {
       this.token = ''
       this.userInfo = { userId: '', userName: '', role: '', avatar: '' }
       Cookies.remove('token')
+      Cookies.remove('userInfo')
     },
     // 更新用户信息
     updateUserInfo (info) {
       this.userInfo = { ...this.userInfo, ...info }
+      Cookies.set('userInfo', JSON.stringify(this.userInfo), { expires: 7 })
     }
   },
   getters: {

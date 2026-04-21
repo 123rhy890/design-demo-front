@@ -23,12 +23,12 @@ app.config.globalProperties.$axios = axios
 
 // ✅ 方案二核心：项目启动自动登录，写入用户信息
 app.use(pinia) // 必须先注册pinia
-const userStore = useUserStore()
-// 这里可以修改 role 切换角色：admin=管理员  teacher=老师  parent=家长
-userStore.loginSave(
-  { userId: '1001', userName: '系统测试账号', role: 'parent', avatar: '' },
-  'auto_login_token_123456'
-)
+// const userStore = useUserStore()
+// // 这里可以修改 role 切换角色：admin=管理员  teacher=老师  parent=家长
+// userStore.loginSave(
+//   { userId: '1001', userName: '系统测试账号', role: 'parent', avatar: '' },
+//   'auto_login_token_123456'
+// )
 
 // 注册插件
 app.use(router).use(ElementPlus)
