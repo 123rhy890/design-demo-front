@@ -108,6 +108,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../pinia/modules/userStore'
 import * as echarts from 'echarts'
+import request from '../../utils/request'
 import { 
   User, Calendar, DocumentCopy, Money, 
   CaretTop, CaretBottom, Plus, Edit, 
@@ -118,12 +119,25 @@ const router = useRouter()
 const userStore = useUserStore()
 
 // 基础数据
-const childTotal = ref(156)
-const todayCheckIn = ref(142)
-const reserveTotal = ref(23)
-const feeUnpaid = ref(8)
-const teacherCount = ref(12)
-const classCount = ref(6)
+const childTotal = ref(0)
+const todayCheckIn = ref(0)
+const reserveTotal = ref(0)
+const feeUnpaid = ref(0)
+
+// 获取基础数据
+const fetchDashboardStats = () => {
+  // 这里可以根据角色分别调用不同的统计接口
+  // 例如管理员调用总计接口，家长调用个人相关接口
+  const role = userStore.userInfo.role
+  
+  if (role === 'admin') {
+    // 获取儿童总数
+    request.get('/child/list').then(res => {
+      childTotal.value = res.data.length
+    })
+    // 更多统计...
+  }
+}
 
 // 图表引用
 const attendanceChartRef = ref(null)
@@ -385,6 +399,7 @@ const handleResize = () => {
 }
 
 onMounted(() => {
+  fetchDashboardStats()
   initAttendanceChart()
   initClassChart()
   initFeeChart()

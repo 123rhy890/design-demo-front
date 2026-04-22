@@ -22,13 +22,6 @@
         <el-form-item label="密码" prop="password">
           <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" />
         </el-form-item>
-        <el-form-item label="角色" prop="role">
-          <el-select v-model="loginForm.role" placeholder="请选择角色">
-            <el-option label="管理员" value="admin" />
-            <el-option label="老师" value="teacher" />
-            <el-option label="家长" value="parent" />
-          </el-select>
-        </el-form-item>
         <el-form-item style="text-align:center;">
           <el-button type="primary" @click="handleLogin" size="default">登录系统</el-button>
           <el-button type="primary" @click="handleRegister" size="default">注册用户</el-button>
@@ -43,42 +36,58 @@ import { ref } from 'vue'
 import { useUserStore } from '../../pinia/modules/userStore'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import request from '../../utils/request'
 
 const router = useRouter()
 const userStore = useUserStore()
 const loginRef = ref(null)
 
+// 角色映射表：后端数字 -> 前端字符串
+const roleMap = {
+  0: 'admin',
+  1: 'teacher',
+  2: 'parent'
+}
+
 // 登录表单
 const loginForm = ref({
   username: '',
-  password: '',
-  role: ''
+  password: ''
 })
 
 // 表单校验规则
 const loginRules = ref({
   username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }]
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 })
 
 // 登录逻辑
 const handleLogin = () => {
   loginRef.value.validate((valid) => {
     if (valid) {
-      // 模拟登录请求-实际开发替换为真实接口请求
-      const mockToken = 'kidscare_' + new Date().getTime()
-      const mockUserInfo = {
-        userId: '1001',
-        userName: loginForm.value.username,
-        role: loginForm.value.role,
-        avatar: ''
-      }
-      // 存储用户信息到Pinia
-      userStore.loginSave(mockUserInfo, mockToken)
-      ElMessage.success('登录成功！')
-      // 跳转到首页
-      router.push('/dashboard')
+      // 真实接口请求
+      request.post('/user/login', {
+        username: loginForm.value.username,
+        password: loginForm.value.password
+      }).then(res => {
+        const { user, token } = res.data
+        
+        // 构建用户信息
+        const userInfo = {
+          userId: user.userId,
+          userName: user.username,
+          role: roleMap[user.roleType],
+          avatar: ''
+        }
+        
+        // 存储用户信息到Pinia
+        userStore.loginSave(userInfo, token)
+        ElMessage.success('登录成功！')
+        // 跳转到首页
+        router.push('/dashboard')
+      }).catch(err => {
+        console.error('登录失败:', err)
+      })
     } else {
       ElMessage.error('请完善登录信息！')
       return false

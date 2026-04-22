@@ -18,10 +18,16 @@
           </template>
 
           <!-- 签到类型选择 -->
-          <el-radio-group v-model="checkType" class="check-type-group" @change="handleTypeChange">
-            <el-radio-button label="checkIn">签到</el-radio-button>
-            <el-radio-button label="checkOut">签退</el-radio-button>
-          </el-radio-group>
+          <div class="check-top-area">
+            <el-radio-group v-model="checkType" class="check-type-group" @change="handleTypeChange">
+              <el-radio-button label="checkIn">签到</el-radio-button>
+              <el-radio-button label="checkOut">签退</el-radio-button>
+            </el-radio-group>
+            
+            <div class="sign-code-box">
+              今日签到码：<span class="code-text">{{ signCode }}</span>
+            </div>
+          </div>
 
           <!-- 儿童选择 -->
           <el-form :model="checkForm" :rules="checkRules" ref="checkFormRef" label-width="100px" class="mt-20">
@@ -220,6 +226,10 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check } from '@element-plus/icons-vue'
+import request from '../../utils/request'
+import { useUserStore } from '../../pinia/modules/userStore'
+
+const userStore = useUserStore()
 
 // 当前时间
 const currentTime = ref('')
@@ -232,6 +242,12 @@ const updateTime = () => {
 
 // 签到类型
 const checkType = ref('checkIn')
+
+// 签到码
+const signCode = ref('')
+const generateSignCode = () => {
+  signCode.value = Math.floor(Math.random() * 90000000 + 10000000).toString()
+}
 
 // 签到表单
 const checkFormRef = ref(null)
@@ -260,19 +276,13 @@ const checkRules = ref({
 const submitting = ref(false)
 
 // 儿童列表
-const childList = ref([
-  { id: 1, name: '张小宝', className: '大一班', checkedIn: false, parentName: '张爸爸', parentPhone: '13800138001' },
-  { id: 2, name: '李小贝', className: '大一班', checkedIn: false, parentName: '李妈妈', parentPhone: '13800138002' },
-  { id: 3, name: '王小丫', className: '大一班', checkedIn: false, parentName: '王爸爸', parentPhone: '13800138003' },
-  { id: 4, name: '赵小龙', className: '大一班', checkedIn: false, parentName: '赵妈妈', parentPhone: '13800138004' },
-  { id: 5, name: '刘小花', className: '大一班', checkedIn: false, parentName: '刘爸爸', parentPhone: '13800138005' }
-])
+const childList = ref([])
 
 // 今日统计
 const todayStats = reactive({
   checkIn: 0,
   checkOut: 0,
-  absent: 5
+  absent: 0
 })
 
 // 今日记录
@@ -289,85 +299,156 @@ const filteredRecords = computed(() => {
 })
 
 // 缺勤列表
-const absentList = computed(() => {
-  return childList.value.filter(child => !child.checkedIn)
-})
+const absentList = ref([])
 
-// 切换签到类型
-const handleTypeChange = () => {
-  checkForm.childId = ''
-  checkForm.pickupPerson = ''
-  checkForm.pickupPhone = ''
-  checkForm.remark = ''
-}
+// 获取初始数据
+const fetchData = async () => {
+  try {
+    // 1. 获取所有儿童
+    const childrenRes = await request.get('/child/list')
+    const allChildren = childrenRes.data
 
-// 选择儿童
-const handleChildChange = (childId) => {
-  const child = childList.value.find(c => c.id === childId)
-  if (child && checkType.value === 'checkOut') {
-    checkForm.pickupPerson = child.parentName
-    checkForm.pickupPhone = child.parentPhone
+    // 2. 获取今日考勤记录
+    const attendanceRes = await request.get('/attendance/today')
+    const todayAttendances = attendanceRes.data
+
+    // 3. 处理今日记录列表
+    todayRecords.value = todayAttendances.flatMap(a => {
+      const records = []
+      if (a.checkinTime) {
+        records.push({
+          id: a.attendanceId + '_in',
+          childName: a.child.childName,
+          className: a.child.classInfo ? a.child.classInfo.className : '未分班',
+          type: 'checkIn',
+          time: a.checkinTime.split('T')[1].substring(0, 5),
+          temperature: 36.5, // 实体类中暂无此字段，可根据需要扩展
+          healthStatus: 'normal',
+          remark: a.remark
+        })
+      }
+      if (a.checkoutTime) {
+        records.push({
+          id: a.attendanceId + '_out',
+          childName: a.child.childName,
+          className: a.child.classInfo ? a.child.classInfo.className : '未分班',
+          type: 'checkOut',
+          time: a.checkoutTime.split('T')[1].substring(0, 5),
+          pickupPerson: a.pickPerson,
+          healthStatus: 'normal',
+          remark: a.remark
+        })
+      }
+      return records
+    })
+
+    // 4. 处理统计数据
+    todayStats.checkIn = todayAttendances.filter(a => a.checkinTime).length
+    todayStats.checkOut = todayAttendances.filter(a => a.checkoutTime).length
+
+    // 5. 处理待签到儿童列表 (用于下拉框)
+    const checkedInIds = todayAttendances.map(a => a.child.childId)
+    const checkedOutIds = todayAttendances.filter(a => a.checkoutTime).map(a => a.child.childId)
+
+    childList.value = allChildren.map(c => ({
+      id: c.childId,
+      name: c.childName,
+      className: c.classInfo ? c.classInfo.className : '未分班',
+      checkedIn: checkedInIds.includes(c.childId),
+      checkedOut: checkedOutIds.includes(c.childId),
+      parentName: c.parent ? c.parent.username : '-',
+      parentPhone: c.emergencyPhone
+    }))
+
+    // 6. 处理缺勤提醒列表
+    const absentRes = await request.get('/attendance/absent')
+    absentList.value = absentRes.data.map(c => ({
+      id: c.childId,
+      name: c.childName,
+      className: c.classInfo ? c.classInfo.className : '未分班',
+      parentName: c.parent ? c.parent.username : '-',
+      parentPhone: c.emergencyPhone
+    }))
+    todayStats.absent = absentList.value.length
+
+  } catch (err) {
+    console.error('获取考勤数据失败', err)
   }
 }
 
 // 提交签到/签退
 const submitCheck = () => {
-  checkFormRef.value.validate((valid) => {
+  checkFormRef.value.validate(async (valid) => {
     if (valid) {
       submitting.value = true
-      
-      setTimeout(() => {
-        const child = childList.value.find(c => c.id === checkForm.childId)
-        
-        // 添加记录
-        const record = {
-          id: Date.now(),
-          childName: child.name,
-          className: child.className,
-          type: checkType.value,
-          time: new Date().toLocaleTimeString(),
-          temperature: checkType.value === 'checkIn' ? checkForm.temperature : null,
-          pickupPerson: checkType.value === 'checkOut' ? checkForm.pickupPerson : null,
-          pickupPhone: checkType.value === 'checkOut' ? checkForm.pickupPhone : null,
-          healthStatus: checkForm.healthStatus,
-          remark: checkForm.remark
-        }
-        
-        todayRecords.value.unshift(record)
-        
-        // 更新儿童状态
+      try {
+        const teacherId = userStore.userInfo.userId
         if (checkType.value === 'checkIn') {
-          child.checkedIn = true
-          todayStats.checkIn++
-          todayStats.absent--
+          await request.post('/attendance/checkin', null, {
+            params: {
+              childId: checkForm.childId,
+              teacherId: teacherId,
+              checkinCode: signCode.value,
+              remark: checkForm.remark
+            }
+          })
+          ElMessage.success('签到成功')
         } else {
-          child.checkedIn = false
-          todayStats.checkOut++
+          await request.post('/attendance/checkout', null, {
+            params: {
+              childId: checkForm.childId,
+              teacherId: teacherId,
+              checkoutCode: signCode.value,
+              pickPerson: checkForm.pickupPerson,
+              pickPhone: checkForm.pickupPhone,
+              remark: checkForm.remark
+            }
+          })
+          ElMessage.success('签退成功')
         }
-        
+        // 重置并刷新
+        checkFormRef.value.resetFields()
+        generateSignCode()
+        fetchData()
+      } catch (err) {
+        console.error('操作失败', err)
+      } finally {
         submitting.value = false
-        ElMessage.success(`${checkType.value === 'checkIn' ? '签到' : '签退'}成功！`)
-        
-        // 重置表单
-        checkForm.childId = ''
-        checkForm.pickupPerson = ''
-        checkForm.pickupPhone = ''
-        checkForm.temperature = 36.5
-        checkForm.healthStatus = 'normal'
-        checkForm.remark = ''
-      }, 500)
+      }
     }
   })
 }
 
 // 通知家长
 const notifyParent = (child) => {
-  ElMessage.success(`已向${child.parentName}发送缺勤提醒短信`)
+  ElMessage.success(`已向 ${child.name} 的家长发送缺勤提醒短信`)
+}
+
+// 切换类型时重置表单
+const handleTypeChange = () => {
+  checkForm.childId = ''
+  checkForm.remark = ''
+  if (checkType.value === 'checkOut') {
+    checkForm.pickupPerson = ''
+    checkForm.pickupPhone = ''
+  }
+}
+
+// 选择儿童后，若是签退则自动填入紧急联系人
+const handleChildChange = (val) => {
+  if (checkType.value === 'checkOut') {
+    const child = childList.value.find(c => c.id === val)
+    if (child) {
+      checkForm.pickupPhone = child.parentPhone
+    }
+  }
 }
 
 onMounted(() => {
   updateTime()
+  generateSignCode()
   setInterval(updateTime, 1000)
+  fetchData()
 })
 </script>
 
@@ -385,8 +466,29 @@ onMounted(() => {
 }
 
 .check-type-group {
-  width: 100%;
+  width: 150px;
   display: flex;
+}
+
+.check-top-area {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sign-code-box {
+  border: 1px solid #f56c6c;
+  padding: 8px 15px;
+  border-radius: 4px;
+  color: #f56c6c;
+  font-size: 14px;
+  background-color: #fef0f0;
+}
+
+.code-text {
+  font-weight: bold;
+  font-size: 18px;
+  margin-left: 5px;
 }
 
 .check-type-group :deep(.el-radio-button__inner) {

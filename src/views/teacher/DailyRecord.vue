@@ -21,9 +21,9 @@
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" icon="Search" @click="searchRecord">查询</el-button>
-          <el-button icon="Refresh" @click="resetSearch">重置</el-button>
-          <el-button type="success" icon="Plus" @click="addRecord">新增记录</el-button>
+          <el-button type="primary" :icon="Search" @click="searchRecord">查询</el-button>
+          <el-button :icon="Refresh" @click="resetSearch">重置</el-button>
+          <el-button type="success" :icon="Plus" @click="addRecord">新增记录</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -45,11 +45,11 @@
         <el-table-column prop="content" label="记录内容" />
         <el-table-column prop="createBy" label="记录人" width="120" />
         <el-table-column prop="createTime" label="记录时间" width="180" />
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="220" align="center" class-name="operation-column">
           <template #default="scope">
-            <el-button type="primary" size="small" icon="View" @click="viewRecord(scope.row)">查看</el-button>
-            <el-button type="warning" size="small" icon="Edit" @click="editRecord(scope.row)">编辑</el-button>
-            <el-button type="danger" size="small" icon="Delete" @click="deleteRecord(scope.row)">删除</el-button>
+            <el-button type="primary" link :icon="View" @click="viewRecord(scope.row)">查看</el-button>
+            <el-button type="warning" link :icon="Edit" @click="editRecord(scope.row)">编辑</el-button>
+            <el-button type="danger" link :icon="Delete" @click="deleteRecord(scope.row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -151,9 +151,68 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Search, Refresh, View, Edit, Delete } from '@element-plus/icons-vue'
+import request from '../../utils/request'
+import { useUserStore } from '../../pinia/modules/userStore'
+import Cookies from 'js-cookie'
+
+const userStore = useUserStore()
+
+// 弹窗控制
+const recordDialogVisible = ref(false)
+const viewDialogVisible = ref(false)
+const isEdit = ref(false)
+const currentRecord = ref({})
+const recordFormRef = ref(null)
+
+// 表单数据
+const recordForm = reactive({
+  recordId: '',
+  childId: '',
+  recordType: '1',
+  recordDate: new Date(),
+  content: ''
+})
+
+const recordRules = reactive({
+  childId: [{ required: true, message: '请选择儿童', trigger: 'change' }],
+  recordType: [{ required: true, message: '请选择记录类型', trigger: 'change' }],
+  recordDate: [{ required: true, message: '请选择日期', trigger: 'change' }],
+  content: [{ required: true, message: '请输入记录内容', trigger: 'blur' }]
+})
+
+// 文件上传
+const uploadHeaders = ref({
+  'Authorization': 'Bearer ' + (Cookies.get('token') || '')
+})
+const fileList = ref([])
+
+// 记录类型映射
+const getTypeName = (type) => {
+  const types = {
+    1: '日常表现',
+    2: '饮食情况',
+    3: '午睡情况',
+    4: '活动表现',
+    5: '健康状况',
+    6: '其他'
+  }
+  return types[type] || types[String(type)] || '未知'
+}
+
+const getTypeColor = (type) => {
+  const colors = {
+    1: '',
+    2: 'success',
+    3: 'warning',
+    4: 'info',
+    5: 'danger',
+    6: 'info'
+  }
+  return colors[type] || colors[String(type)] || ''
+}
 
 // 搜索表单
 const searchForm = reactive({
@@ -168,135 +227,91 @@ const loading = ref(false)
 const pagination = reactive({
   pageNum: 1,
   pageSize: 10,
-  total: 30
+  total: 0
 })
 
 // 记录列表
-const recordList = ref([
-  {
-    recordId: 1001,
-    childId: 2001,
-    childName: '张小宝',
-    className: '大一班',
-    recordDate: '2024-05-20',
-    recordType: 1,
-    content: '今日表现良好，积极参与课堂互动，乐于助人',
-    createBy: '王老师',
-    createTime: '2024-05-20 17:30:20',
-    photos: []
-  },
-  {
-    recordId: 1002,
-    childId: 2002,
-    childName: '李小贝',
-    className: '大一班',
-    recordDate: '2024-05-20',
-    recordType: 2,
-    content: '今日午餐吃了一碗米饭，青菜和肉都吃完了，加餐吃了一个苹果',
-    createBy: '王老师',
-    createTime: '2024-05-20 13:15:10',
-    photos: []
-  },
-  {
-    recordId: 1003,
-    childId: 2003,
-    childName: '王小丫',
-    className: '大一班',
-    recordDate: '2024-05-20',
-    recordType: 5,
-    content: '今日有点咳嗽，已通知家长，精神状态良好',
-    createBy: '王老师',
-    createTime: '2024-05-20 10:20:30',
-    photos: ['https://picsum.photos/200/200?random=1']
-  }
-])
+const recordList = ref([])
 
 // 儿童选项
-const childOptions = ref([
-  { value: 2001, label: '张小宝 (大一班)' },
-  { value: 2002, label: '李小贝 (大一班)' },
-  { value: 2003, label: '王小丫 (大一班)' }
-])
+const childOptions = ref([])
 
-// 新增/编辑弹窗
-const recordDialogVisible = ref(false)
-const isEdit = ref(false)
-const recordFormRef = ref(null)
-const recordForm = reactive({
-  recordId: '',
-  childId: '',
-  recordType: '',
-  recordDate: new Date(),
-  content: ''
-})
-const recordRules = ref({
-  childId: [{ required: true, message: '请选择儿童', trigger: 'change' }],
-  recordType: [{ required: true, message: '请选择记录类型', trigger: 'change' }],
-  recordDate: [{ required: true, message: '请选择记录日期', trigger: 'change' }],
-  content: [{ required: true, message: '请输入记录内容', trigger: 'blur' }]
-})
-
-// 文件上传
-const uploadHeaders = ref({
-  'Authorization': 'Bearer ' + localStorage.getItem('token') || ''
-})
-const fileList = ref([])
-
-// 查看弹窗
-const viewDialogVisible = ref(false)
-const currentRecord = ref({})
-
-// 类型映射
-const getTypeName = (type) => {
-  const typeMap = {
-    1: '日常表现',
-    2: '饮食情况',
-    3: '午睡情况',
-    4: '活动表现',
-    5: '健康状况',
-    6: '其他'
+// 获取儿童列表
+const fetchChildren = async () => {
+  try {
+    const res = await request.get('/child/list')
+    childOptions.value = res.data.map(c => ({
+      value: c.childId,
+      label: `${c.childName} (${c.classInfo ? c.classInfo.className : '未分班'})`
+    }))
+  } catch (err) {
+    console.error('获取儿童列表失败', err)
   }
-  return typeMap[type] || '未知'
-}
-
-// 类型颜色
-const getTypeColor = (type) => {
-  const colorMap = {
-    1: 'primary',
-    2: 'success',
-    3: 'warning',
-    4: 'info',
-    5: 'danger',
-    6: 'gray'
-  }
-  return colorMap[type] || ''
 }
 
 // 搜索记录
-const searchRecord = () => {
+const searchRecord = async () => {
   loading.value = true
-  setTimeout(() => {
+  try {
+    const teacherId = userStore.userInfo.userId
+    const res = await request.get(`/dailyStatus/teacher/${teacherId}`)
+    
+    // 过滤并转换数据
+    let filteredData = res.data.map(item => ({
+      recordId: item.recordId,
+      childId: item.child ? item.child.childId : '',
+      childName: item.child ? item.child.childName : '未知',
+      className: item.child && item.child.classInfo ? item.child.classInfo.className : '未分班',
+      recordDate: item.recordDate,
+      recordType: item.recordType || 1, // 默认日常表现
+      content: item.content || item.activity || item.diet || item.homework || '无内容',
+      createBy: item.teacher ? item.teacher.username : '系统',
+      createTime: item.createTime ? item.createTime.replace('T', ' ') : '-',
+      photos: item.abnormalImg ? [item.abnormalImg] : []
+    }))
+
+    // 根据儿童姓名筛选
+    if (searchForm.childName) {
+      filteredData = filteredData.filter(item => item.childName.includes(searchForm.childName))
+    }
+
+    // 根据日期范围筛选
+    if (searchForm.recordDate && searchForm.recordDate.length === 2) {
+      const start = new Date(searchForm.recordDate[0])
+      const end = new Date(searchForm.recordDate[1])
+      filteredData = filteredData.filter(item => {
+        const date = new Date(item.recordDate)
+        return date >= start && date <= end
+      })
+    }
+
+    recordList.value = filteredData
+    pagination.total = filteredData.length
+  } catch (err) {
+    console.error('获取日常记录失败', err)
+    ElMessage.error('数据加载失败')
+  } finally {
     loading.value = false
-    ElMessage.success('记录查询成功！')
-  }, 500)
+  }
 }
 
 // 重置搜索
 const resetSearch = () => {
-  Object.assign(searchForm, {
-    childName: '',
-    recordDate: []
-  })
+  searchForm.childName = ''
+  searchForm.recordDate = []
+  searchRecord()
 }
 
 // 新增记录
 const addRecord = () => {
   isEdit.value = false
-  recordForm.recordId = ''
-  recordForm.childId = ''
-  recordForm.recordType = ''
-  recordForm.recordDate = new Date()
-  recordForm.content = ''
+  Object.assign(recordForm, {
+    recordId: '',
+    childId: '',
+    recordType: '1',
+    recordDate: new Date(),
+    content: ''
+  })
   fileList.value = []
   recordDialogVisible.value = true
 }
@@ -304,11 +319,13 @@ const addRecord = () => {
 // 编辑记录
 const editRecord = (row) => {
   isEdit.value = true
-  recordForm.recordId = row.recordId
-  recordForm.childId = row.childId
-  recordForm.recordType = row.recordType
-  recordForm.recordDate = new Date(row.recordDate)
-  recordForm.content = row.content
+  Object.assign(recordForm, {
+    recordId: row.recordId,
+    childId: row.childId,
+    recordType: row.recordType.toString(),
+    recordDate: new Date(row.recordDate),
+    content: row.content
+  })
   fileList.value = row.photos ? row.photos.map(img => ({ url: img })) : []
   recordDialogVisible.value = true
 }
@@ -329,48 +346,50 @@ const deleteRecord = (row) => {
       cancelButtonText: '取消',
       type: 'error'
     }
-  ).then(() => {
-    recordList.value = recordList.value.filter(item => item.recordId !== row.recordId)
-    ElMessage.success('记录删除成功！')
+  ).then(async () => {
+    try {
+      await request.delete(`/dailyStatus/delete/${row.recordId}`)
+      ElMessage.success('记录删除成功！')
+      searchRecord()
+    } catch (err) {
+      console.error('删除记录失败', err)
+    }
   })
 }
 
 // 保存记录
 const saveRecord = () => {
-  recordFormRef.value.validate((valid) => {
+  recordFormRef.value.validate(async (valid) => {
     if (valid) {
-      if (isEdit.value) {
-        // 编辑
-        const index = recordList.value.findIndex(item => item.recordId === recordForm.recordId)
-        if (index > -1) {
-          recordList.value[index] = {
-            ...recordList.value[index],
-            childId: recordForm.childId,
-            recordType: recordForm.recordType,
-            recordDate: recordForm.recordDate.toISOString().split('T')[0],
-            content: recordForm.content,
-            photos: fileList.value.map(file => file.url)
-          }
-        }
-        ElMessage.success('记录编辑成功！')
-      } else {
-        // 新增
-        const newRecord = {
-          recordId: Date.now(),
-          childId: recordForm.childId,
-          childName: childOptions.value.find(item => item.value === recordForm.childId)?.label.split(' ')[0] || '',
-          className: '大一班',
-          recordDate: recordForm.recordDate.toISOString().split('T')[0],
-          recordType: recordForm.recordType,
+      loading.value = true
+      try {
+        const teacherId = userStore.userInfo.userId
+        const data = {
+          recordType: parseInt(recordForm.recordType),
           content: recordForm.content,
-          createBy: '王老师',
-          createTime: new Date().toLocaleString(),
-          photos: fileList.value.map(file => file.url)
+          recordDate: recordForm.recordDate.toISOString().split('T')[0],
+          // 同时映射到旧字段以防万一
+          activity: recordForm.recordType === '1' || recordForm.recordType === '4' ? recordForm.content : '',
+          diet: recordForm.recordType === '2' ? recordForm.content : '',
+          homework: recordForm.recordType === '6' ? recordForm.content : '', // 其他
+          abnormalDesc: recordForm.recordType === '5' ? recordForm.content : '',
+          abnormalImg: fileList.value.length > 0 ? fileList.value[0].url : ''
         }
-        recordList.value.unshift(newRecord)
-        ElMessage.success('记录新增成功！')
+
+        if (isEdit.value) {
+          await request.put(`/dailyStatus/update/${recordForm.recordId}`, data)
+          ElMessage.success('记录编辑成功！')
+        } else {
+          await request.post(`/dailyStatus/add?childId=${recordForm.childId}&teacherId=${teacherId}`, data)
+          ElMessage.success('记录新增成功！')
+        }
+        recordDialogVisible.value = false
+        searchRecord()
+      } catch (err) {
+        console.error('保存记录失败', err)
+      } finally {
+        loading.value = false
       }
-      recordDialogVisible.value = false
     }
   })
 }
@@ -388,15 +407,15 @@ const handleUploadSuccess = (response, file) => {
 // 分页事件
 const handleSizeChange = (val) => {
   pagination.pageSize = val
-  searchRecord()
+  // 这里可以根据真实分页接口传参
 }
 
 const handleCurrentChange = (val) => {
   pagination.pageNum = val
-  searchRecord()
 }
 
 onMounted(() => {
+  fetchChildren()
   searchRecord()
 })
 </script>
@@ -419,5 +438,15 @@ onMounted(() => {
 .photos-title {
   margin-bottom: 10px;
   font-weight: bold;
+}
+
+:deep(.operation-column .cell) {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+:deep(.operation-column .cell .el-button) {
+  margin: 0;
 }
 </style>

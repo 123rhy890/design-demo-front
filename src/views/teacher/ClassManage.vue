@@ -5,7 +5,7 @@
 <template>
   <div class="teacher-class-manage">
     <!-- 班级列表 -->
-    <el-row :gutter="20">
+    <el-row :gutter="20" v-loading="loading">
       <el-col :span="8" v-for="classItem in classList" :key="classItem.id">
         <el-card class="class-card" shadow="hover">
           <template #header>
@@ -37,7 +37,7 @@
             </div>
             <div class="info-row">
               <span class="label">学员人数：</span>
-              <span class="highlight">{{ classItem.studentCount }}人</span>
+              <span class="highlight">{{ classItem.studentCount }} / {{ classItem.maxCapacity }}人</span>
             </div>
             <div class="info-row">
               <span class="label">今日出勤：</span>
@@ -85,12 +85,18 @@
         <el-form-item label="班级名称" prop="name">
           <el-input v-model="classForm.name" placeholder="请输入班级名称" />
         </el-form-item>
-        <el-form-item label="班主任" prop="teacher">
-          <el-select v-model="classForm.teacher" placeholder="请选择班主任" style="width:100%">
-            <el-option label="王老师" value="王老师" />
-            <el-option label="李老师" value="李老师" />
-            <el-option label="张老师" value="张老师" />
+        <el-form-item label="班主任" prop="teacherId">
+          <el-select v-model="classForm.teacherId" placeholder="请选择班主任" style="width:100%">
+            <el-option 
+              v-for="t in teacherList" 
+              :key="t.userId" 
+              :label="t.username" 
+              :value="t.userId" 
+            />
           </el-select>
+        </el-form-item>
+        <el-form-item label="最大容量" prop="maxCapacity">
+          <el-input-number v-model="classForm.maxCapacity" :min="1" :max="100" style="width:100%" />
         </el-form-item>
         <el-form-item label="教室位置" prop="classroom">
           <el-input v-model="classForm.classroom" placeholder="请输入教室位置" />
@@ -117,18 +123,26 @@
     </el-dialog>
 
     <!-- 学员列表弹窗 -->
-    <el-dialog v-model="studentsDialogVisible" title="班级学员列表" width="800px">
-      <el-table :data="currentStudents" border stripe style="width:100%">
-        <el-table-column prop="id" label="学号" width="100" />
-        <el-table-column prop="name" label="姓名" width="120" />
+    <el-dialog v-model="studentsDialogVisible" :title="`【${currentClassName}】学员列表`" width="800px">
+      <el-table :data="currentStudents" border stripe style="width:100%" v-loading="studentsLoading">
+        <el-table-column prop="childId" label="学号" width="100" />
+        <el-table-column prop="childName" label="姓名" width="120" />
         <el-table-column prop="gender" label="性别" width="80">
           <template #default="scope">
             {{ scope.row.gender === 1 ? '男' : '女' }}
           </template>
         </el-table-column>
-        <el-table-column prop="age" label="年龄" width="80" />
-        <el-table-column prop="parentName" label="家长" width="120" />
-        <el-table-column prop="parentPhone" label="联系电话" width="130" />
+        <el-table-column prop="birthDate" label="生日" width="120" />
+        <el-table-column prop="parentName" label="家长" width="120">
+          <template #default="scope">
+            {{ scope.row.parent ? scope.row.parent.username : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="parentPhone" label="联系电话" width="130">
+          <template #default="scope">
+            {{ scope.row.parent ? scope.row.parent.phone : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="scope">
             <el-button type="text" size="small" @click="transferStudent(scope.row)">
@@ -177,43 +191,48 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, User, Calendar } from '@element-plus/icons-vue'
+import request from '../../utils/request'
+import { useUserStore } from '../../pinia/modules/userStore'
+
+const userStore = useUserStore()
 
 // 班级列表
-const classList = ref([
-  {
-    id: 1,
-    name: '大一班',
-    teacher: '王老师',
-    studentCount: 28,
-    todayAttendance: 26,
-    classroom: '一楼101室',
-    status: 1,
-    description: '大班年龄段，注重综合能力培养'
-  },
-  {
-    id: 2,
-    name: '大二班',
-    teacher: '李老师',
-    studentCount: 26,
-    todayAttendance: 24,
-    classroom: '一楼102室',
-    status: 1,
-    description: '大班年龄段，注重综合能力培养'
-  },
-  {
-    id: 3,
-    name: '中一班',
-    teacher: '张老师',
-    studentCount: 25,
-    todayAttendance: 23,
-    classroom: '二楼201室',
-    status: 1,
-    description: '中班年龄段，培养基础能力'
+const classList = ref([])
+const loading = ref(false)
+
+// 教师列表
+const teacherList = ref([])
+
+// 获取班级列表
+const fetchClassList = async () => {
+  loading.value = true
+  try {
+    const res = await request.get('/class/stats')
+    classList.value = res.data
+  } catch (err) {
+    console.error('获取班级列表失败', err)
+  } finally {
+    loading.value = false
   }
-])
+}
+
+// 获取教师列表
+const fetchTeacherList = async () => {
+  try {
+    const res = await request.get('/user/role/1')
+    teacherList.value = res.data
+  } catch (err) {
+    console.error('获取教师列表失败', err)
+  }
+}
+
+onMounted(() => {
+  fetchClassList()
+  fetchTeacherList()
+})
 
 // 班级表单
 const classDialogVisible = ref(false)
@@ -222,7 +241,8 @@ const classFormRef = ref(null)
 const classForm = reactive({
   id: '',
   name: '',
-  teacher: '',
+  teacherId: '',
+  maxCapacity: 30,
   classroom: '',
   status: 1,
   description: ''
@@ -230,13 +250,15 @@ const classForm = reactive({
 
 const classRules = ref({
   name: [{ required: true, message: '请输入班级名称', trigger: 'blur' }],
-  teacher: [{ required: true, message: '请选择班主任', trigger: 'change' }],
+  teacherId: [{ required: true, message: '请选择班主任', trigger: 'change' }],
   classroom: [{ required: true, message: '请输入教室位置', trigger: 'blur' }]
 })
 
 // 学员列表
 const studentsDialogVisible = ref(false)
+const studentsLoading = ref(false)
 const currentStudents = ref([])
+const currentClassName = ref('')
 
 // 考勤汇总
 const attendanceDialogVisible = ref(false)
@@ -269,7 +291,15 @@ const viewClassDetail = (classItem) => {
 // 编辑班级
 const editClass = (classItem) => {
   isEdit.value = true
-  Object.assign(classForm, classItem)
+  Object.assign(classForm, {
+    id: classItem.id,
+    name: classItem.name,
+    teacherId: classItem.teacherId,
+    maxCapacity: classItem.maxCapacity,
+    classroom: classItem.classroom,
+    status: classItem.status,
+    description: classItem.description || ''
+  })
   classDialogVisible.value = true
 }
 
@@ -279,7 +309,8 @@ const addNewClass = () => {
   Object.assign(classForm, {
     id: '',
     name: '',
-    teacher: '',
+    teacherId: userStore.userInfo.userId, // 默认当前老师
+    maxCapacity: 30,
     classroom: '',
     status: 1,
     description: ''
@@ -289,56 +320,77 @@ const addNewClass = () => {
 
 // 保存班级
 const saveClass = () => {
-  classFormRef.value.validate((valid) => {
+  classFormRef.value.validate(async (valid) => {
     if (valid) {
-      if (isEdit.value) {
-        const index = classList.value.findIndex(item => item.id === classForm.id)
-        if (index > -1) {
-          classList.value[index] = { ...classForm, studentCount: classList.value[index].studentCount, todayAttendance: classList.value[index].todayAttendance }
+      try {
+        if (isEdit.value) {
+          await request.put(`/class/update/${classForm.id}?teacherId=${classForm.teacherId}`, {
+            className: classForm.name,
+            maxCapacity: classForm.maxCapacity,
+            classStatus: classForm.status
+          })
+          ElMessage.success('班级信息更新成功！')
+        } else {
+          await request.post(`/class/add?teacherId=${classForm.teacherId}`, {
+            className: classForm.name,
+            maxCapacity: classForm.maxCapacity,
+            classStatus: classForm.status
+          })
+          ElMessage.success('班级创建成功！')
         }
-        ElMessage.success('班级信息更新成功！')
-      } else {
-        classList.value.push({
-          ...classForm,
-          id: Date.now(),
-          studentCount: 0,
-          todayAttendance: 0
-        })
-        ElMessage.success('班级创建成功！')
+        classDialogVisible.value = false
+        fetchClassList()
+      } catch (err) {
+        console.error('保存班级失败', err)
       }
-      classDialogVisible.value = false
     }
   })
 }
 
 // 查看学员列表
-const viewStudents = (classItem) => {
-  currentStudents.value = [
-    { id: 2001, name: '张小宝', gender: 1, age: 6, parentName: '张爸爸', parentPhone: '13800138001' },
-    { id: 2002, name: '李小贝', gender: 0, age: 6, parentName: '李妈妈', parentPhone: '13800138002' },
-    { id: 2003, name: '王小丫', gender: 0, age: 5, parentName: '王爸爸', parentPhone: '13800138003' }
-  ]
+const viewStudents = async (classItem) => {
+  currentClassName.value = classItem.name
   studentsDialogVisible.value = true
+  studentsLoading.value = true
+  try {
+    const res = await request.get(`/child/class/${classItem.id}`)
+    currentStudents.value = res.data
+  } catch (err) {
+    console.error('获取学员列表失败', err)
+  } finally {
+    studentsLoading.value = false
+  }
 }
 
 // 转班
 const transferStudent = (student) => {
-  ElMessage.info(`转班功能：${student.name}`)
+  ElMessage.info(`转班功能：${student.childName}`)
 }
 
 // 移除学员
 const removeStudent = (student) => {
   ElMessageBox.confirm(
-    `确定要将${student.name}从班级中移除吗？`,
+    `确定要将${student.childName}从班级中移除吗？`,
     '移除确认',
     {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
     }
-  ).then(() => {
-    currentStudents.value = currentStudents.value.filter(item => item.id !== student.id)
-    ElMessage.success('学员移除成功！')
+  ).then(async () => {
+    try {
+      // 实际上是把 child 的 classId 设为 null
+      await request.put(`/child/update/${student.childId}?classId=0`)
+      ElMessage.success('学员移除成功！')
+      // 刷新列表
+      if (currentStudents.value.length > 0) {
+        const classId = currentStudents.value[0].classInfo.classId
+        viewStudents({ id: classId, name: currentClassName.value })
+      }
+      fetchClassList()
+    } catch (err) {
+      console.error('移除学员失败', err)
+    }
   })
 }
 
@@ -363,15 +415,18 @@ const loadAttendance = () => {
   padding: 20px;
   height: 100%;
   box-sizing: border-box;
+  background-color: #f5f7fa;
 }
 
 .class-card {
   margin-bottom: 20px;
   transition: all 0.3s;
+  border-radius: 8px;
 }
 
 .class-card:hover {
   transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .class-header {
@@ -383,6 +438,7 @@ const loadAttendance = () => {
 .class-header h3 {
   margin: 0 10px 0 0;
   display: inline-block;
+  font-size: 18px;
 }
 
 .class-info {
@@ -412,26 +468,24 @@ const loadAttendance = () => {
 
 .class-actions {
   display: flex;
-  gap: 10px;
-}
-
-.class-actions .el-button {
-  flex: 1;
+  justify-content: space-around;
+  padding-top: 10px;
 }
 
 .add-class-card {
-  margin-bottom: 20px;
-  height: 320px;
+  height: 250px;
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   cursor: pointer;
-  transition: all 0.3s;
+  border: 2px dashed #dcdfe6;
+  background: transparent;
+  border-radius: 8px;
 }
 
 .add-class-card:hover {
-  transform: translateY(-5px);
   border-color: #409EFF;
+  background-color: #f0f7ff;
 }
 
 .add-content {
@@ -439,9 +493,9 @@ const loadAttendance = () => {
 }
 
 .add-text {
-  margin-top: 15px;
-  font-size: 16px;
+  margin-top: 10px;
   color: #409EFF;
+  font-weight: bold;
 }
 
 .mb-20 {

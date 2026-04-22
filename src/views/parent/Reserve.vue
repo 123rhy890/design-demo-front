@@ -12,7 +12,7 @@
             <span>选择预约日期</span>
           </template>
 
-          <el-calendar v-model="selectedDate">
+          <el-calendar v-model="selectedDate" :key="calendarKey">
             <template #date-cell="{ data }">
               <div 
                 class="calendar-day" 
@@ -58,23 +58,12 @@
               />
             </el-form-item>
 
-            <el-form-item label="托管类型" prop="careType">
-              <el-radio-group v-model="reserveForm.careType">
-                <el-radio label="dayCare">日托（8:00-17:00）</el-radio>
-                <el-radio label="fullCare">全托（24小时）</el-radio>
-                <el-radio label="tempCare">临时托管</el-radio>
+            <el-form-item label="托管时间" prop="timeSlot">
+              <el-radio-group v-model="reserveForm.timeSlot">
+                <el-radio label="上午">上午</el-radio>
+                <el-radio label="下午">下午</el-radio>
+                <el-radio label="全天">全天</el-radio>
               </el-radio-group>
-            </el-form-item>
-
-            <el-form-item label="时间段" prop="timeSlot" v-if="reserveForm.careType === 'tempCare'">
-              <el-time-picker
-                v-model="reserveForm.timeSlot"
-                is-range
-                range-separator="至"
-                start-placeholder="开始时间"
-                end-placeholder="结束时间"
-                style="width:100%"
-              />
             </el-form-item>
 
             <el-form-item label="特殊需求">
@@ -82,15 +71,8 @@
                 v-model="reserveForm.specialNeeds" 
                 type="textarea" 
                 :rows="3" 
-                placeholder="请输入特殊需求（选填）"
+                placeholder="请输入特殊需求（选填，如晚餐、留餐等）"
               />
-            </el-form-item>
-
-            <el-form-item label="预计费用">
-              <el-tag type="warning" size="large">
-                ¥ {{ calculateFee() }}
-              </el-tag>
-              <span class="ml-10 text-muted">（实际费用以账单为准）</span>
             </el-form-item>
 
             <el-form-item>
@@ -110,10 +92,8 @@
           <el-alert type="info" :closable="false">
             <ul class="notice-list">
               <li>请至少提前1天预约托管服务</li>
-              <li>日托服务时间为8:00-17:00，全托为24小时</li>
-              <li>临时托管最少2小时，按小时计费</li>
-              <li>预约成功后请按时送孩子到托管班</li>
-              <li>如需取消预约，请提前12小时操作</li>
+              <li>预约提交后需等待管理员/教师审核</li>
+              <li>如需取消预约，请在审核通过前操作</li>
             </ul>
           </el-alert>
         </el-card>
@@ -125,30 +105,20 @@
       <template #header>
         <div class="card-header">
           <span>我的预约记录</span>
-          <el-radio-group v-model="recordFilter" size="small">
+          <el-radio-group v-model="recordFilter" size="small" @change="fetchReservations">
             <el-radio-button label="all">全部</el-radio-button>
-            <el-radio-button label="pending">待确认</el-radio-button>
-            <el-radio-button label="confirmed">已确认</el-radio-button>
-            <el-radio-button label="completed">已完成</el-radio-button>
-            <el-radio-button label="cancelled">已取消</el-radio-button>
+            <el-radio-button label="review">待审核</el-radio-button>
+            <el-radio-button label="confirm">已确认</el-radio-button>
+            <el-radio-button label="cancel">已取消</el-radio-button>
           </el-radio-group>
         </div>
       </template>
 
-      <el-table :data="filteredRecords" border stripe style="width:100%">
-        <el-table-column prop="childName" label="儿童姓名" width="100" />
+      <el-table :data="filteredRecords" border stripe style="width:100%" v-loading="loading">
+        <el-table-column prop="childName" label="儿童姓名" width="120" />
         <el-table-column prop="reserveDate" label="预约日期" width="120" />
-        <el-table-column prop="careType" label="托管类型" width="150">
-          <template #default="scope">
-            {{ getCareTypeText(scope.row.careType) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="timeSlot" label="时间段" width="180" />
-        <el-table-column prop="fee" label="费用" width="100">
-          <template #default="scope">
-            ¥{{ scope.row.fee }}
-          </template>
-        </el-table-column>
+        <el-table-column prop="timeSlot" label="时间段" width="100" />
+        <el-table-column prop="specialNeeds" label="特殊需求" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="scope">
             <el-tag :type="getStatusType(scope.row.status)">
@@ -156,23 +126,16 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="预约时间" width="180" />
-        <el-table-column label="操作" width="150">
+        <el-table-column prop="createTime" label="申请时间" width="180" />
+        <el-table-column label="操作" width="120">
           <template #default="scope">
             <el-button 
               type="danger" 
               size="small" 
               @click="cancelReserve(scope.row)"
-              v-if="scope.row.status === 'pending' || scope.row.status === 'confirmed'"
+              v-if="scope.row.status === 'review'"
             >
-              取消预约
-            </el-button>
-            <el-button 
-              type="text" 
-              size="small" 
-              @click="viewDetail(scope.row)"
-            >
-              查看详情
+              取消
             </el-button>
           </template>
         </el-table-column>
@@ -182,63 +145,40 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check } from '@element-plus/icons-vue'
+import { useUserStore } from '../../pinia/modules/userStore'
+import request from '../../utils/request'
+
+const userStore = useUserStore()
 
 // 选中的日期
 const selectedDate = ref(new Date())
+const calendarKey = ref(0) // 用于强制刷新日历组件
+const loading = ref(false)
+const submitting = ref(false)
 
 // 儿童列表
-const children = ref([
-  { id: 1, name: '张小宝', className: '大一班' },
-  { id: 2, name: '张小美', className: '中一班' }
-])
+const children = ref([])
 
 // 预约表单
 const reserveFormRef = ref(null)
-const submitting = ref(false)
-
 const reserveForm = reactive({
   childId: '',
   reserveDate: '',
-  careType: 'dayCare',
-  timeSlot: [],
+  timeSlot: '全天',
   specialNeeds: ''
 })
 
-const reserveRules = ref({
+const reserveRules = {
   childId: [{ required: true, message: '请选择儿童', trigger: 'change' }],
   reserveDate: [{ required: true, message: '请选择预约日期', trigger: 'change' }],
-  careType: [{ required: true, message: '请选择托管类型', trigger: 'change' }],
   timeSlot: [{ required: true, message: '请选择时间段', trigger: 'change' }]
-})
+}
 
 // 预约记录
-const reserveRecords = ref([
-  {
-    id: 1,
-    childName: '张小宝',
-    reserveDate: '2024-05-25',
-    careType: 'dayCare',
-    timeSlot: '8:00-17:00',
-    fee: 80,
-    status: 'confirmed',
-    createTime: '2024-05-20 10:30:00'
-  },
-  {
-    id: 2,
-    childName: '张小美',
-    reserveDate: '2024-05-26',
-    careType: 'tempCare',
-    timeSlot: '14:00-18:00',
-    fee: 40,
-    status: 'pending',
-    createTime: '2024-05-21 09:15:00'
-  }
-])
-
-// 记录筛选
+const reserveRecords = ref([])
 const recordFilter = ref('all')
 
 const filteredRecords = computed(() => {
@@ -248,6 +188,45 @@ const filteredRecords = computed(() => {
   return reserveRecords.value.filter(item => item.status === recordFilter.value)
 })
 
+// 获取儿童列表
+const fetchChildren = async () => {
+  const parentId = userStore.userInfo.userId
+  try {
+    const res = await request.get(`/child/parent/${parentId}`)
+    children.value = res.data.map(c => ({
+      id: c.childId,
+      name: c.childName,
+      className: c.classInfo ? c.classInfo.className : '未分班'
+    }))
+  } catch (err) {
+    console.error('获取儿童列表失败', err)
+  }
+}
+
+// 获取预约记录
+const fetchReservations = async () => {
+  loading.value = true
+  const parentId = userStore.userInfo.userId
+  try {
+    const res = await request.get(`/reservation/parent/${parentId}`)
+    reserveRecords.value = res.data.map(r => ({
+      id: r.reservationId,
+      childName: r.child ? r.child.childName : '-',
+      reserveDate: r.reserveDate,
+      timeSlot: r.timeSlot,
+      specialNeeds: r.specialNeeds,
+      status: r.reserveStatus,
+      createTime: r.createTime ? r.createTime.replace('T', ' ') : '-'
+    }))
+    // 数据加载完成后，更新 calendarKey 触发日历组件重新渲染
+    calendarKey.value++
+  } catch (err) {
+    console.error('获取预约记录失败', err)
+  } finally {
+    loading.value = false
+  }
+}
+
 // 禁用过去的日期
 const disabledDate = (time) => {
   return time.getTime() < Date.now() - 24 * 60 * 60 * 1000
@@ -255,18 +234,20 @@ const disabledDate = (time) => {
 
 // 获取日期状态
 const getDateStatus = (date) => {
-  const record = reserveRecords.value.find(r => r.reserveDate === date)
+  // 只查找非取消状态的记录
+  const record = reserveRecords.value.find(r => r.reserveDate === date && r.status !== 'cancel')
   if (record) {
-    return record.status === 'confirmed' ? '已预约' : '待确认'
+    return record.status === 'confirm' ? '已确认' : '待审核'
   }
   return ''
 }
 
 // 获取日期样式类
 const getDayClass = (date) => {
-  const record = reserveRecords.value.find(r => r.reserveDate === date)
+  // 只查找非取消状态的记录
+  const record = reserveRecords.value.find(r => r.reserveDate === date && r.status !== 'cancel')
   if (record) {
-    return record.status === 'confirmed' ? 'reserved-day' : 'pending-day'
+    return record.status === 'confirm' ? 'reserved-day' : 'pending-day'
   }
   return ''
 }
@@ -276,43 +257,12 @@ const selectDate = (date) => {
   reserveForm.reserveDate = new Date(date)
 }
 
-// 计算费用
-const calculateFee = () => {
-  if (!reserveForm.careType) return 0
-  
-  const feeMap = {
-    dayCare: 80,
-    fullCare: 150,
-    tempCare: 20 // 每小时
-  }
-  
-  let fee = feeMap[reserveForm.careType] || 0
-  
-  if (reserveForm.careType === 'tempCare' && reserveForm.timeSlot.length === 2) {
-    const hours = Math.ceil((reserveForm.timeSlot[1] - reserveForm.timeSlot[0]) / (1000 * 60 * 60))
-    fee = hours * 20
-  }
-  
-  return fee
-}
-
-// 托管类型文本
-const getCareTypeText = (type) => {
-  const typeMap = {
-    dayCare: '日托（8:00-17:00）',
-    fullCare: '全托（24小时）',
-    tempCare: '临时托管'
-  }
-  return typeMap[type] || type
-}
-
 // 状态文本
 const getStatusText = (status) => {
   const statusMap = {
-    pending: '待确认',
-    confirmed: '已确认',
-    completed: '已完成',
-    cancelled: '已取消'
+    review: '待审核',
+    confirm: '已确认',
+    cancel: '已取消'
   }
   return statusMap[status] || status
 }
@@ -320,145 +270,75 @@ const getStatusText = (status) => {
 // 状态类型
 const getStatusType = (status) => {
   const typeMap = {
-    pending: 'warning',
-    confirmed: 'success',
-    completed: 'info',
-    cancelled: 'danger'
+    review: 'warning',
+    confirm: 'success',
+    cancel: 'danger'
   }
   return typeMap[status] || ''
 }
 
 // 提交预约
 const submitReserve = () => {
-  reserveFormRef.value.validate((valid) => {
+  reserveFormRef.value.validate(async (valid) => {
     if (valid) {
-      if (reserveForm.careType === 'tempCare' && reserveForm.timeSlot.length !== 2) {
-        ElMessage.warning('请选择临时托管的时间段')
-        return
-      }
-      
       submitting.value = true
-      
-      setTimeout(() => {
-        const child = children.value.find(c => c.id === reserveForm.childId)
-        const timeSlot = reserveForm.careType === 'tempCare' 
-          ? `${reserveForm.timeSlot[0].toLocaleTimeString().slice(0, 5)}-${reserveForm.timeSlot[1].toLocaleTimeString().slice(0, 5)}`
-          : reserveForm.careType === 'dayCare' ? '8:00-17:00' : '24小时'
-        
-        reserveRecords.value.unshift({
-          id: Date.now(),
-          childName: child.name,
+      const parentId = userStore.userInfo.userId
+      try {
+        await request.post(`/reservation/add?childId=${reserveForm.childId}&parentId=${parentId}`, {
           reserveDate: reserveForm.reserveDate.toISOString().split('T')[0],
-          careType: reserveForm.careType,
-          timeSlot: timeSlot,
-          fee: calculateFee(),
-          status: 'pending',
-          createTime: new Date().toLocaleString()
+          timeSlot: reserveForm.timeSlot,
+          specialNeeds: reserveForm.specialNeeds
         })
-        
+        ElMessage.success('预约提交成功！')
+        fetchReservations()
+        // 重置表单并清除校验状态
+        reserveFormRef.value.resetFields()
+      } catch (err) {
+        console.error('提交预约失败', err)
+      } finally {
         submitting.value = false
-        ElMessage.success('预约提交成功，请等待确认！')
-        
-        // 重置表单
-        reserveForm.childId = ''
-        reserveForm.reserveDate = ''
-        reserveForm.careType = 'dayCare'
-        reserveForm.timeSlot = []
-        reserveForm.specialNeeds = ''
-      }, 1000)
+      }
     }
   })
 }
 
 // 取消预约
 const cancelReserve = (record) => {
-  ElMessageBox.confirm(
-    '确定要取消这个预约吗？',
-    '取消预约',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
+  ElMessageBox.confirm('确定要取消这个预约吗？', '提示', {
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await request.put(`/reservation/cancel/${record.id}`)
+      ElMessage.success('预约已取消')
+      fetchReservations()
+    } catch (err) {
+      console.error('取消预约失败', err)
     }
-  ).then(() => {
-    record.status = 'cancelled'
-    ElMessage.success('预约已取消')
   })
 }
 
-// 查看详情
-const viewDetail = (record) => {
-  ElMessage.info(`查看预约详情：${record.childName}`)
-}
+onMounted(() => {
+  fetchChildren()
+  fetchReservations()
+})
 </script>
 
 <style scoped>
 .parent-reserve {
   padding: 20px;
-  height: 100%;
-  box-sizing: border-box;
 }
-
-.mb-20 {
-  margin-bottom: 20px;
-}
-
-.mt-20 {
-  margin-top: 20px;
-}
-
-.ml-10 {
-  margin-left: 10px;
-}
-
-.text-muted {
-  color: #909399;
-  font-size: 12px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
+.mb-20 { margin-bottom: 20px; }
+.mt-20 { margin-top: 20px; }
 .calendar-day {
   height: 100%;
   padding: 5px;
   cursor: pointer;
-  transition: all 0.3s;
 }
-
-.calendar-day:hover {
-  background: #f5f7fa;
-}
-
-.calendar-day.reserved-day {
-  background: #e1f3d8;
-}
-
-.calendar-day.pending-day {
-  background: #fdf6ec;
-}
-
-.day-number {
-  font-size: 16px;
-  font-weight: bold;
-}
-
-.day-status {
-  font-size: 12px;
-  color: #67C23A;
-  margin-top: 5px;
-}
-
-.notice-list {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.notice-list li {
-  margin: 8px 0;
-  color: #606266;
-}
+.calendar-day.reserved-day { background: #e1f3d8; }
+.calendar-day.pending-day { background: #fdf6ec; }
+.day-number { font-size: 16px; font-weight: bold; }
+.day-status { font-size: 12px; color: #67C23A; margin-top: 5px; }
+.notice-list { padding-left: 20px; margin: 0; }
+.notice-list li { margin: 8px 0; color: #606266; }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
 </style>

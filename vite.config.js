@@ -16,9 +16,9 @@ export default defineConfig({
     proxy: {
       // 配置接口代理，解决跨域
       '/api': {
-        target: 'http://localhost:8080', // 后端接口地址
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        target: 'http://localhost:8081', // 后端接口地址
+        changeOrigin: true
+        // rewrite: (path) => path.replace(/^\/api/, '') // 后端已有 /api 前缀，无需重写
       }
     }
   }
