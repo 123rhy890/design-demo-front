@@ -4,6 +4,7 @@ import App from './App.vue'
 // 引入Element Plus及样式
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 // 引入路由
 import router from './router'
 // 引入Pinia
@@ -31,5 +32,7 @@ app.use(pinia) // 必须先注册pinia
 // )
 
 // 注册插件
-app.use(router).use(ElementPlus)
+app.use(router).use(ElementPlus, {
+  locale: zhCn,
+})
 app.mount('#app')

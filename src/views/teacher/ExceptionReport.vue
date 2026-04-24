@@ -94,12 +94,14 @@
             <el-form-item label="上传照片">
               <el-upload
                 class="upload-demo"
-                action="/api/upload/exception"
+                action="/api/upload/record"
                 :headers="uploadHeaders"
-                :multiple="true"
+                v-model:file-list="fileList"
+                :multiple="false"
                 :on-success="handleUploadSuccess"
-                :file-list="fileList"
+                :on-error="handleUploadError"
                 list-type="picture-card"
+                :limit="1"
               >
                 <el-icon><Plus /></el-icon>
               </el-upload>
@@ -190,18 +192,19 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="150" fixed="right">
+            <el-table-column label="操作" width="180" align="center" fixed="right">
               <template #default="scope">
-                <el-button type="primary" size="small" @click="viewDetail(scope.row)">
+                <el-button type="primary" link :icon="View" @click="viewDetail(scope.row)">
                   查看
                 </el-button>
                 <el-button 
                   type="success" 
-                  size="small" 
+                  link
+                  :icon="CircleCheck"
                   @click="markHandled(scope.row)"
                   v-if="scope.row.status === 'pending'"
                 >
-                  标记已处理
+                  已处理
                 </el-button>
               </template>
             </el-table-column>
@@ -290,18 +293,33 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  Warning, User, CircleClose, More, Plus, Upload 
+  Warning, User, CircleClose, More, Plus, Upload, View, CircleCheck 
 } from '@element-plus/icons-vue'
+import request from '../../utils/request'
+import { useUserStore } from '../../pinia/modules/userStore'
+import Cookies from 'js-cookie'
+
+const userStore = useUserStore()
 
 // 儿童列表
-const childList = ref([
-  { id: 1, name: '张小宝', className: '大一班' },
-  { id: 2, name: '李小贝', className: '大一班' },
-  { id: 3, name: '王小丫', className: '大一班' }
-])
+const childList = ref([])
+
+// 获取儿童列表
+const fetchChildren = async () => {
+  try {
+    const res = await request.get('/child/list')
+    childList.value = res.data.map(c => ({
+      id: c.childId,
+      name: c.childName,
+      className: c.classInfo ? c.classInfo.className : '未分班'
+    }))
+  } catch (err) {
+    console.error('获取儿童列表失败', err)
+  }
+}
 
 // 上报表单
 const reportFormRef = ref(null)
@@ -317,7 +335,7 @@ const reportForm = reactive({
   notifyParent: true
 })
 
-const reportRules = ref({
+const reportRules = reactive({
   type: [{ required: true, message: '请选择异常类型', trigger: 'change' }],
   childId: [{ required: true, message: '请选择儿童', trigger: 'change' }],
   severity: [{ required: true, message: '请选择严重程度', trigger: 'change' }],
@@ -328,7 +346,7 @@ const reportRules = ref({
 
 // 文件上传
 const uploadHeaders = ref({
-  'Authorization': 'Bearer ' + localStorage.getItem('token') || ''
+  'Authorization': 'Bearer ' + (Cookies.get('token') || '')
 })
 const fileList = ref([])
 
@@ -341,54 +359,66 @@ const templates = ref([
 ])
 
 // 异常记录
-const exceptionRecords = ref([
-  {
-    id: 1,
-    childName: '张小宝',
-    className: '大一班',
-    type: 'health',
-    severity: 'medium',
-    occurTime: '2024-05-20 10:30',
-    reportTime: '2024-05-20 10:35',
-    reporter: '王老师',
-    description: '儿童体温37.8℃，有轻微咳嗽',
-    treatment: '已测量体温，让儿童多喝水休息，已通知家长',
-    status: 'handled',
-    images: []
-  },
-  {
-    id: 2,
-    childName: '李小贝',
-    className: '大一班',
-    type: 'accident',
-    severity: 'low',
-    occurTime: '2024-05-19 14:20',
-    reportTime: '2024-05-19 14:25',
-    reporter: '王老师',
-    description: '户外活动时不慎摔倒，右膝盖轻微擦伤',
-    treatment: '已清洗伤口，涂抹碘伏消毒，贴创可贴',
-    status: 'handled',
-    images: []
-  }
-])
+const exceptionRecords = ref([])
+const loading = ref(false)
 
 // 记录筛选
 const recordFilter = ref('all')
 
-const filteredRecords = computed(() => {
-  if (recordFilter.value === 'all') {
-    return exceptionRecords.value
+// 获取异常记录
+const fetchRecords = async () => {
+  loading.value = true
+  try {
+    const res = await request.get('/dailyStatus/abnormal', {
+      params: { type: recordFilter.value }
+    })
+    exceptionRecords.value = res.data.map(item => ({
+      id: item.recordId,
+      childName: item.child ? item.child.childName : '未知',
+      className: item.child && item.child.classInfo ? item.child.classInfo.className : '未分班',
+      type: item.abnormalType,
+      severity: item.severity,
+      occurTime: item.occurTime ? item.occurTime.replace('T', ' ').substring(0, 16) : '-',
+      reportTime: item.createTime ? item.createTime.replace('T', ' ').substring(0, 16) : '-',
+      reporter: item.teacher ? item.teacher.username : '系统',
+      description: item.abnormalDesc || item.content,
+      treatment: item.treatment,
+      status: item.status === 1 ? 'handled' : 'pending',
+      images: item.abnormalImg ? [item.abnormalImg] : []
+    }))
+  } catch (err) {
+    console.error('获取异常记录失败', err)
+  } finally {
+    loading.value = false
   }
-  return exceptionRecords.value.filter(item => item.type === recordFilter.value)
+}
+
+// 监听筛选变化
+watch(recordFilter, () => {
+  fetchRecords()
+})
+
+const filteredRecords = computed(() => {
+  return exceptionRecords.value
 })
 
 // 本月统计
 const monthStats = ref({
-  total: 8,
-  health: 3,
-  behavior: 2,
-  handled: 6
+  total: 0,
+  health: 0,
+  behavior: 0,
+  handled: 0
 })
+
+// 获取统计数据
+const fetchStats = async () => {
+  try {
+    const res = await request.get('/dailyStatus/abnormal/stats')
+    monthStats.value = res.data
+  } catch (err) {
+    console.error('获取统计数据失败', err)
+  }
+}
 
 // 详情弹窗
 const detailDialogVisible = ref(false)
@@ -451,43 +481,56 @@ const handleUploadSuccess = (response, file) => {
     ElMessage.success('照片上传成功！')
   } else {
     ElMessage.error('照片上传失败：' + response.msg)
+    // 上传失败从列表中移除
+    const index = fileList.value.indexOf(file)
+    if (index > -1) {
+      fileList.value.splice(index, 1)
+    }
   }
+}
+
+const handleUploadError = (err) => {
+  console.error('上传异常:', err)
+  ElMessage.error('服务器响应异常，请检查网络或后端服务')
 }
 
 // 提交报告
 const submitReport = () => {
-  reportFormRef.value.validate((valid) => {
+  reportFormRef.value.validate(async (valid) => {
     if (valid) {
       submitting.value = true
-      
-      setTimeout(() => {
-        const child = childList.value.find(c => c.id === reportForm.childId)
-        
-        const newRecord = {
-          id: Date.now(),
-          childName: child.name,
-          className: child.className,
-          type: reportForm.type,
+      try {
+        const teacherId = userStore.userInfo.userId
+        const data = {
+          recordDate: new Date().toISOString().split('T')[0],
+          recordType: 5, // 异常记录统一归类为健康/异常
+          abnormalType: reportForm.type,
+          abnormalDesc: reportForm.description,
+          content: reportForm.description,
           severity: reportForm.severity,
-          occurTime: reportForm.occurTime.toLocaleString(),
-          reportTime: new Date().toLocaleString(),
-          reporter: '王老师',
-          description: reportForm.description,
+          occurTime: reportForm.occurTime.toISOString(),
           treatment: reportForm.treatment,
-          status: 'pending',
-          images: fileList.value.map(file => file.url)
+          isNotify: reportForm.notifyParent ? 1 : 0,
+          status: 0, // 初始处理中
+          abnormalImg: fileList.value.length > 0 ? fileList.value[0].url : ''
         }
+
+        await request.post(`/dailyStatus/add?childId=${reportForm.childId}&teacherId=${teacherId}`, data)
         
-        exceptionRecords.value.unshift(newRecord)
-        monthStats.value.total++
-        
-        submitting.value = false
         ElMessage.success('异常报告提交成功！' + (reportForm.notifyParent ? '已通知家长' : ''))
         
         // 重置表单
         reportFormRef.value.resetFields()
         fileList.value = []
-      }, 1000)
+        
+        // 刷新数据
+        fetchRecords()
+        fetchStats()
+      } catch (err) {
+        console.error('提交报告失败', err)
+      } finally {
+        submitting.value = false
+      }
     }
   })
 }
@@ -508,12 +551,23 @@ const markHandled = (record) => {
       cancelButtonText: '取消',
       type: 'success'
     }
-  ).then(() => {
-    record.status = 'handled'
-    monthStats.value.handled++
-    ElMessage.success('已标记为已处理')
+  ).then(async () => {
+    try {
+      await request.put(`/dailyStatus/abnormal/handled/${record.id}`)
+      ElMessage.success('已标记为已处理')
+      fetchRecords()
+      fetchStats()
+    } catch (err) {
+      console.error('操作失败', err)
+    }
   })
 }
+
+onMounted(() => {
+  fetchChildren()
+  fetchRecords()
+  fetchStats()
+})
 </script>
 
 <style scoped>

@@ -72,7 +72,7 @@
     <el-dialog v-model="recordDialogVisible" :title="isEdit ? '编辑日常记录' : '新增日常记录'" width="600px">
       <el-form :model="recordForm" :rules="recordRules" ref="recordFormRef" label-width="100px">
         <el-form-item label="选择儿童" prop="childId">
-          <el-select v-model="recordForm.childId" placeholder="请选择儿童" style="width:100%">
+          <el-select v-model="recordForm.childId" placeholder="请选择儿童" style="width:100%" filterable>
             <el-option 
               v-for="child in childOptions" 
               :key="child.value" 
@@ -107,10 +107,12 @@
             class="upload-demo"
             action="/api/upload/record"
             :headers="uploadHeaders"
-            :multiple="true"
+            v-model:file-list="fileList"
+            :multiple="false"
             :on-success="handleUploadSuccess"
-            :file-list="fileList"
+            :on-error="handleUploadError"
             list-type="picture-card"
+            :limit="1"
           >
             <el-icon><Plus /></el-icon>
           </el-upload>
@@ -151,7 +153,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Refresh, View, Edit, Delete } from '@element-plus/icons-vue'
 import request from '../../utils/request'
@@ -314,6 +316,12 @@ const addRecord = () => {
   })
   fileList.value = []
   recordDialogVisible.value = true
+  // 清除校验提示
+  nextTick(() => {
+    if (recordFormRef.value) {
+      recordFormRef.value.clearValidate()
+    }
+  })
 }
 
 // 编辑记录
@@ -328,6 +336,12 @@ const editRecord = (row) => {
   })
   fileList.value = row.photos ? row.photos.map(img => ({ url: img })) : []
   recordDialogVisible.value = true
+  // 清除校验提示
+  nextTick(() => {
+    if (recordFormRef.value) {
+      recordFormRef.value.clearValidate()
+    }
+  })
 }
 
 // 查看记录
@@ -397,11 +411,22 @@ const saveRecord = () => {
 // 上传成功回调
 const handleUploadSuccess = (response, file) => {
   if (response.code === 200) {
+    // response.data.url 已经是 /api/uploads/records/xxx.jpg
     file.url = response.data.url
     ElMessage.success('照片上传成功！')
   } else {
     ElMessage.error('照片上传失败：' + response.msg)
+    // 上传失败从列表中移除
+    const index = fileList.value.indexOf(file)
+    if (index > -1) {
+      fileList.value.splice(index, 1)
+    }
   }
+}
+
+const handleUploadError = (err) => {
+  console.error('上传异常:', err)
+  ElMessage.error('服务器响应异常，请检查网络或后端服务')
 }
 
 // 分页事件

@@ -64,7 +64,7 @@
                 :step="0.1" 
                 :min="35" 
                 :max="42"
-                style="width:100%"
+                style="width:94%"
               />
               <span class="ml-10">℃</span>
             </el-form-item>
@@ -243,10 +243,59 @@ const updateTime = () => {
 // 签到类型
 const checkType = ref('checkIn')
 
-// 签到码
-const signCode = ref('')
-const generateSignCode = () => {
-  signCode.value = Math.floor(Math.random() * 90000000 + 10000000).toString()
+// 签到码 - 初始生成一个随机码，确保页面加载即有数据
+const signCode = ref(Math.floor(Math.random() * 90000000 + 10000000).toString())
+
+// 获取或生成签到码
+const initSignCode = async () => {
+  console.log('开始初始化签到码，当前初始码:', signCode.value)
+  // 修改判断逻辑：使用 userInfo.role === 'teacher'
+  if (userStore.userInfo && userStore.userInfo.role === 'teacher') { 
+    try {
+      const classRes = await request.get(`/class/teacher/${userStore.userInfo.userId}`)
+      console.log('查询教师班级结果:', classRes.data)
+      if (classRes.data && classRes.data.length > 0) {
+        const classId = classRes.data[0].classId
+        const codeRes = await request.get(`/class/code/${classId}`)
+        console.log('获取后端签到码结果:', codeRes.data)
+        if (codeRes.data) {
+          signCode.value = codeRes.data
+        } else {
+          console.log('后端今日未发布码，同步本地码到服务器')
+          await syncSignCode(signCode.value)
+        }
+      } else {
+        console.warn('该教师尚未绑定班级，将仅在本地展示随机码')
+      }
+    } catch (err) {
+      console.error('初始化签到码 API 过程出错:', err)
+    }
+  } else {
+    console.warn('当前用户信息不足或角色不是教师，无法同步签到码', userStore.userInfo)
+  }
+}
+
+// 提取同步逻辑，减少重复请求
+const syncSignCode = async (code) => {
+  if (userStore.userInfo && userStore.userInfo.role === 'teacher') {
+    try {
+      const classRes = await request.get(`/class/teacher/${userStore.userInfo.userId}`)
+      if (classRes.data && classRes.data.length > 0) {
+        const classId = classRes.data[0].classId
+        await request.put(`/class/code/${classId}?code=${code}`)
+      }
+    } catch (err) {
+      console.error('同步签到码到服务器失败', err)
+    }
+  }
+}
+
+const generateSignCode = async () => {
+  const code = Math.floor(Math.random() * 90000000 + 10000000).toString()
+  signCode.value = code
+  
+  await syncSignCode(code)
+  ElMessage.success('今日签到码已刷新')
 }
 
 // 签到表单
@@ -304,40 +353,67 @@ const absentList = ref([])
 // 获取初始数据
 const fetchData = async () => {
   try {
-    // 1. 获取所有儿童
-    const childrenRes = await request.get('/child/list')
-    const allChildren = childrenRes.data
+    // 1. 获取班级信息（如果是老师登录，则获取该老师负责的班级）
+    let classIds = []
+    if (userStore.userInfo && userStore.userInfo.roleType === 1) {
+      try {
+        const classRes = await request.get(`/class/teacher/${userStore.userInfo.userId}`)
+        classIds = (classRes.data || []).map(c => c.classId)
+      } catch (err) {
+        console.error('获取教师班级信息失败', err)
+      }
+    }
 
-    // 2. 获取今日考勤记录
-    const attendanceRes = await request.get('/attendance/today')
-    const todayAttendances = attendanceRes.data
+    // 2. 并发获取数据
+    const [childrenRes, attendanceRes, absentRes] = await Promise.allSettled([
+      request.get('/child/list'),
+      request.get('/attendance/today'),
+      request.get('/attendance/absent')
+    ])
+
+    // 处理儿童列表
+    let allChildren = []
+    if (childrenRes.status === 'fulfilled') {
+      allChildren = childrenRes.value.data || []
+      if (userStore.userInfo && userStore.userInfo.roleType === 1 && classIds.length > 0) {
+        allChildren = allChildren.filter(c => c.classInfo && classIds.includes(c.classInfo.classId))
+      }
+    }
+
+    // 处理今日考勤
+    let todayAttendances = []
+    if (attendanceRes.status === 'fulfilled') {
+      todayAttendances = attendanceRes.value.data || []
+    }
 
     // 3. 处理今日记录列表
     todayRecords.value = todayAttendances.flatMap(a => {
       const records = []
-      if (a.checkinTime) {
-        records.push({
-          id: a.attendanceId + '_in',
-          childName: a.child.childName,
-          className: a.child.classInfo ? a.child.classInfo.className : '未分班',
-          type: 'checkIn',
-          time: a.checkinTime.split('T')[1].substring(0, 5),
-          temperature: 36.5, // 实体类中暂无此字段，可根据需要扩展
-          healthStatus: 'normal',
-          remark: a.remark
-        })
-      }
-      if (a.checkoutTime) {
-        records.push({
-          id: a.attendanceId + '_out',
-          childName: a.child.childName,
-          className: a.child.classInfo ? a.child.classInfo.className : '未分班',
-          type: 'checkOut',
-          time: a.checkoutTime.split('T')[1].substring(0, 5),
-          pickupPerson: a.pickPerson,
-          healthStatus: 'normal',
-          remark: a.remark
-        })
+      if (a.child) {
+        if (a.checkinTime) {
+          records.push({
+            id: a.attendanceId + '_in',
+            childName: a.child.childName,
+            className: a.child.classInfo ? a.child.classInfo.className : '未分班',
+            type: 'checkIn',
+            time: a.checkinTime.includes('T') ? a.checkinTime.split('T')[1].substring(0, 5) : a.checkinTime.substring(11, 16),
+            temperature: 36.5,
+            healthStatus: 'normal',
+            remark: a.remark
+          })
+        }
+        if (a.checkoutTime) {
+          records.push({
+            id: a.attendanceId + '_out',
+            childName: a.child.childName,
+            className: a.child.classInfo ? a.child.classInfo.className : '未分班',
+            type: 'checkOut',
+            time: a.checkoutTime.includes('T') ? a.checkoutTime.split('T')[1].substring(0, 5) : a.checkoutTime.substring(11, 16),
+            pickupPerson: a.pickPerson,
+            healthStatus: 'normal',
+            remark: a.remark
+          })
+        }
       }
       return records
     })
@@ -346,9 +422,9 @@ const fetchData = async () => {
     todayStats.checkIn = todayAttendances.filter(a => a.checkinTime).length
     todayStats.checkOut = todayAttendances.filter(a => a.checkoutTime).length
 
-    // 5. 处理待签到儿童列表 (用于下拉框)
-    const checkedInIds = todayAttendances.map(a => a.child.childId)
-    const checkedOutIds = todayAttendances.filter(a => a.checkoutTime).map(a => a.child.childId)
+    // 5. 处理待签到儿童列表
+    const checkedInIds = todayAttendances.map(a => a.child ? a.child.childId : null).filter(id => id !== null)
+    const checkedOutIds = todayAttendances.filter(a => a.checkoutTime).map(a => a.child ? a.child.childId : null).filter(id => id !== null)
 
     childList.value = allChildren.map(c => ({
       id: c.childId,
@@ -361,18 +437,24 @@ const fetchData = async () => {
     }))
 
     // 6. 处理缺勤提醒列表
-    const absentRes = await request.get('/attendance/absent')
-    absentList.value = absentRes.data.map(c => ({
-      id: c.childId,
-      name: c.childName,
-      className: c.classInfo ? c.classInfo.className : '未分班',
-      parentName: c.parent ? c.parent.username : '-',
-      parentPhone: c.emergencyPhone
-    }))
-    todayStats.absent = absentList.value.length
+    if (absentRes.status === 'fulfilled') {
+      let absentData = absentRes.value.data || []
+      if (userStore.userInfo && userStore.userInfo.roleType === 1 && classIds.length > 0) {
+        absentData = absentData.filter(c => c.classInfo && classIds.includes(c.classInfo.classId))
+      }
+      absentList.value = absentData.map(c => ({
+        id: c.childId,
+        name: c.childName,
+        className: c.classInfo ? c.classInfo.className : '未分班',
+        parentName: c.parent ? c.parent.username : '-',
+        parentPhone: c.emergencyPhone
+      }))
+      todayStats.absent = absentList.value.length
+    }
 
   } catch (err) {
     console.error('获取考勤数据失败', err)
+    ElMessage.error('数据加载失败，请检查网络或刷新页面')
   }
 }
 
@@ -446,7 +528,7 @@ const handleChildChange = (val) => {
 
 onMounted(() => {
   updateTime()
-  generateSignCode()
+  initSignCode()
   setInterval(updateTime, 1000)
   fetchData()
 })

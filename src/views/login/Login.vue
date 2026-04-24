@@ -1,15 +1,9 @@
 <template>
   <div 
     class="login-page"
-    style="
-      width: 100%;
-      height: 100vh;
-      background: url('https://picsum.photos/1920/1080?random=1') no-repeat center center;
-      background-size: cover;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    "
+    :style="{
+      backgroundImage: `url(${backgroundUrl})`,
+    }"
   >
     <el-card class="login-card" style="width:400px;">
       <template #header>
@@ -37,10 +31,13 @@ import { useUserStore } from '../../pinia/modules/userStore'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import request from '../../utils/request'
+import backgroundImg from '../../assets/Login.jpg'
 
 const router = useRouter()
 const userStore = useUserStore()
 const loginRef = ref(null)
+
+const backgroundUrl = backgroundImg
 
 // 角色映射表：后端数字 -> 前端字符串
 const roleMap = {
@@ -102,6 +99,14 @@ const handleRegister = () => {
 
 <style scoped>
 .login-page {
+  width: 100%;
+  height: 100vh;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   position: relative;
 }
 

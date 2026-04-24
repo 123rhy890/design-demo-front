@@ -41,16 +41,28 @@ export const asyncRoutes = [
         meta: { title: '家长审核', roles: ['admin'] }
       },
       {
+        path: 'admin/childAudit',
+        name: 'ChildAudit',
+        component: () => import('../views/admin/ChildAudit.vue'),
+        meta: { title: '儿童审核', roles: ['admin'] }
+      },
+      {
         path: 'admin/roleAuth',
         name: 'RoleAuth',
         component: () => import('../views/admin/RoleAuth.vue'),
         meta: { title: '角色权限', roles: ['admin'] }
       },
       {
-        path: 'admin/feeManage',
-        name: 'FeeManage',
-        component: () => import('../views/admin/FeeManage.vue'),
-        meta: { title: '费用管理', roles: ['admin'] }
+        path: 'admin/feeRule',
+        name: 'FeeRule',
+        component: () => import('../views/admin/FeeRuleView.vue'),
+        meta: { title: '费用规则', roles: ['admin'] }
+      },
+      {
+        path: 'admin/paymentManage',
+        name: 'PaymentManage',
+        component: () => import('../views/admin/PaymentManage.vue'),
+        meta: { title: '缴费管理', roles: ['admin'] }
       },
       {
         path: 'admin/dataExport',

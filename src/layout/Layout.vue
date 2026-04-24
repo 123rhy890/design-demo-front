@@ -33,7 +33,8 @@
             </template>
             <el-menu-item index="/admin/userAudit">家长审核</el-menu-item>
             <el-menu-item index="/admin/roleAuth">角色权限</el-menu-item>
-            <el-menu-item index="/admin/feeManage">费用管理</el-menu-item>
+            <el-menu-item index="/admin/feeRule">费用规则</el-menu-item>
+            <el-menu-item index="/admin/paymentManage">缴费管理</el-menu-item>
             <el-menu-item index="/admin/dataExport">数据导出</el-menu-item>
           </el-sub-menu>
           <!-- 老师菜单 -->
